@@ -1,2 +1,2 @@
-# Laser_Tag_Project_SWE
-This is a laser tag project
+# photon-main
+Main software for Photon Laser Tag
