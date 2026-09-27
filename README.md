@@ -18,15 +18,16 @@ Requirements
 - psycopg2
 
 Installation
-1. Clone the repository
-2. Enter the project directory
-3. Make the install script executable:
-   chmod +x install.sh
-4. Run:
-   ./install.sh
+1. Open a terminal on the Debian vm
+2. Clone the GitHub repository: git clone https://github.com/AbrielGanv/Laser_Tag_Project_SWE
+3. Move into the project folder: cd Laser_Tag_Project_SWE
+4. Run the installation script: bash install.sh
+5. Wait for all required packages to finish installing.
 
 Running the Program
-python3 app.py
+1. Make sure you are inside the project folder.
+2. Run the application with: python3 app.py
+3. The laser tag application should open.
 
 Database
 The program expects PostgreSQL to already contain:
@@ -36,5 +37,6 @@ Table: players
 Networking
 Default network address: 127.0.0.1
 UDP transmit port: 7500
+This can be configured while within the program. 
 
 The network address can be changed inside the application.
