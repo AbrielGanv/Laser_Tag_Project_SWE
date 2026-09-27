@@ -1,58 +1,57 @@
+import os
+
 import psycopg2
-from psycopg2 import sql
+from dotenv import load_dotenv
+
+from udp_files.udp_transmit import broadcast_equipment_code
+
+load_dotenv()
 
 # Define connection parameters
 connection_params = {
-    'dbname': 'photon',
-    #'user': 'student',
-    #'password': 'student',
-    #'host': 'localhost',
-    #'port': '5432'
+    'dbname': os.getenv('DB_NAME'),
+    'user': os.getenv('DB_USER'),
+    'password': os.getenv('DB_PASSWORD'),
+    'host': os.getenv('DB_HOST'),
+    'port': os.getenv('DB_PORT')
 }
 
-try:
-    # Connect to PostgreSQL
-    conn = psycopg2.connect(**connection_params)
-    cursor = conn.cursor()
+def add_player(player_id, codename):
+    
+    #adds a player to PostrgreSQL and broadcasts their equipment ID 
 
-    # Execute a query
-    cursor.execute("SELECT version();")
+    conn = None
+    cursor = None
 
-    # Fetch and display the result
-    version = cursor.fetchone()
-    print(f"Connected to - {version}")
+    try:
+        #connects to PostrgreSQL
+        conn = psycopg2.connect(**connection_params)
+        cursor = conn.cursor()
 
-    # Example: creating a table
-    #cursor.execute('''
-    #    CREATE TABLE IF NOT EXISTS employees (
-    #        id SERIAL PRIMARY KEY,
-    #        name VARCHAR(100),
-    #        department VARCHAR(50),
-    #        salary DECIMAL
-    #    );
-    #''')
+        #adds player to database
+        cursor.execute('''
+            INSERT INTO players (id, codename)
+            VALUES (%s, %s);
+            ''', (player_id, codename))
 
-    # Insert sample data
-    cursor.execute('''
-        INSERT INTO players (id, codename)
-        VALUES (%s, %s);
-    ''', ('500', 'BhodiLi'))
+        #saves the database change
+        conn.commit()
 
-    # Commit the changes
-    conn.commit()
+        print(f"Added player {codename} with equipment ID {player_id}")
 
-    # Fetch and display data from the table
-    cursor.execute("SELECT * FROM players;")
-    rows = cursor.fetchall()
-    for row in rows:
-        print(row)
+        #broadcasts after the DB commits
+        broadcast_equipment_code(player_id)
 
-except Exception as error:
-    print(f"Error connecting to PostgreSQL database: {error}")
+    except Exception as error:
+        if conn:
+            conn.rollback()
+        print(f"Error adding player: {error}")
 
-finally:
-    # Close the cursor and connection
-    if cursor:
-        cursor.close()
-    if conn:
-        conn.close()
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+if __name__ == "__main__":
+    add_player(504, "TestPlayer5")

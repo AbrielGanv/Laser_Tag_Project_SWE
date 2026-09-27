@@ -4,7 +4,7 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 
-#define PORT 7500 // Specify the UDP port you want to listen on
+#define PORT 7501 // Specify the UDP port you want to listen on
 
 int main() {
     int sockfd;
