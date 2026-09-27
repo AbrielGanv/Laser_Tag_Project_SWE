@@ -2,7 +2,7 @@ import tkinter as tk                                      # Creates the graphica
 from tkinter import messagebox                            # Creates popup messages
 from pathlib import Path                                 # Creates reliable file paths
 from PIL import Image, ImageTk                           # Opens and displays images
-
+from database import PlayerDatabase
 
 class LaserTagApp:                                       # Controls the laser tag application
 
@@ -14,6 +14,9 @@ class LaserTagApp:                                       # Controls the laser ta
 
         self.red_players = []                            # Stores red team players
         self.green_players = []                          # Stores green team players
+        self.db = PlayerDatabase()                       # Connects to the photon database when first used
+        self.root.protocol("WM_DELETE_WINDOW",           # Closes the database when the application closes
+                           self.close_app)
 
         self.root.bind("<F5>", self.start_game)          # Connects F5 to the Start Game function
         self.root.bind("<F12>", self.clear_all_players)  # Connects F12 to the Clear All function
@@ -162,6 +165,21 @@ class LaserTagApp:                                       # Controls the laser ta
             pady=5                                       # Adds vertical spacing
         )
 
+        self.player_id_entry.bind("<Return>",
+                                  self.look_up_player)   # Enter in Player ID looks up the codename
+        self.player_id_entry.bind("<FocusOut>",
+                                  self.look_up_player)   # Tabbing out of Player ID also looks it up
+        self.codename_entry.bind(
+            "<Return>",                                  # Enter in Codename
+            lambda event: self.equipment_id_entry
+            .focus()                                     # Moves on to Equipment ID
+        )
+        self.equipment_id_entry.bind(
+            "<Return>",                                  # Enter in Equipment ID
+            lambda event: self.add_player()              # Adds the player
+        )
+        self.last_looked_up_id = None                    # Remembers the last ID looked up to avoid repeat queries
+
         self.selected_team = tk.StringVar(value="red")   # Stores the selected team
 
         red_choice = tk.Radiobutton(
@@ -210,6 +228,22 @@ class LaserTagApp:                                       # Controls the laser ta
             column=4,                                    # Places the button in column 4
             columnspan=2,                                # Uses two columns
             pady=8                                       # Adds vertical spacing
+        )
+
+        self.status_label = tk.Label(
+            entry_frame,                                 # Places the message in the entry frame
+            text="Enter a player ID and "                # Sets the starting instructions
+                 "press Enter or Tab",
+            font=("Arial", 11),                          # Sets the message font
+            fg="#cccccc",                                # Sets the message color
+            bg="#2b2b2b"                                 # Matches the entry frame background
+        )
+
+        self.status_label.grid(
+            row=2,                                       # Places the message in row 2
+            column=0,                                    # Starts the message in column 0
+            columnspan=6,                                # Spans the whole entry frame
+            pady=(0, 4)                                  # Adds spacing below the message
         )
 
         for column in range(6):                          # Loops through all six entry frame columns
@@ -342,7 +376,7 @@ class LaserTagApp:                                       # Controls the laser ta
         equipment_id = self.equipment_id_entry.get().strip()  # Gets the equipment ID
         team = self.selected_team.get()                  # Gets the selected team
 
-        if not player_id or not codename or not equipment_id:  # Checks for empty fields
+        if not player_id or not equipment_id:  # Checks for empty fields
             messagebox.showerror(
                 "Missing Information",
                 "Enter the player ID, codename, and equipment ID"
@@ -397,6 +431,28 @@ class LaserTagApp:                                       # Controls the laser ta
             )
             return                                       # Stops the function
 
+        saved_codename = self.db.get_codename(player_id) # Looks up the Player ID in the database
+
+        if saved_codename is not None:                   # Checks whether the player is already in the database
+            codename = saved_codename                    # Uses the codename saved in the database
+        elif not codename:                               # Runs when a new player has no codename yet
+            messagebox.showerror(
+                "New Player",
+                f"Player ID {player_id} is not in the database yet.\n"
+                "Enter a codename for this new player."
+            )
+            self.codename_entry.focus()                  # Moves the cursor to Codename
+            return                                       # Stops the function
+        elif len(codename) > 30:                         # Checks whether the new codename is too long
+            messagebox.showerror(
+                "Invalid Codename",
+                "The codename can be at most 30 characters"
+            )
+            self.codename_entry.focus()                  # Moves the cursor to Codename
+            return                                       # Stops the function
+        else:                                            # Runs when a new player has a valid codename
+            self.db.add_player(player_id, codename)      # Saves the new player in the database
+
         player = {
             "player_id": player_id,                      # Stores the Player ID
             "codename": codename,                        # Stores the codename
@@ -414,16 +470,60 @@ class LaserTagApp:                                       # Controls the laser ta
 
         selected_listbox.insert(
             tk.END,                                      # Adds the player to the end of the list
-            player_text                                  # Displays the player's information
+            player_text                        # Displays the player's information
         )
 
         self.clear_entry_fields()                        # Clears the fields for the next player
 
+        self.set_status(
+            f"Added {codename} to the {team} team", # Confirms the player was added
+            "#39ff14"  # Shows the message in green
+        )
+
+    def look_up_player(self, event=None):                # Fills in the codename when a Player ID is entered
+        player_id = self.player_id_entry.get().strip()   # Gets the entered player ID
+
+        if not player_id.isdigit():                      # Checks whether Player ID is an integer
+            if player_id:                                # Only complains when something was typed
+                self.set_status("The player ID must be an integer", "#ff6b6b")
+            return  # Stops the function
+
+        if player_id == self.last_looked_up_id:          # Skips IDs that were just looked up
+            return  # Stops the function
+
+        codename = self.db.get_codename(player_id)       # Looks up the codename in the database
+        self.last_looked_up_id = player_id               # Remembers this ID after a successful lookup
+
+        self.codename_entry.delete(0, tk.END)       # Clears any old codename
+
+        if codename is None:                             # Runs when the player is not in the database
+            self.set_status(
+                f"New player - enter a codename for ID {player_id}",
+                "#ffd966"                          # Shows the message in yellow
+            )
+            self.codename_entry.focus()                  # Moves the cursor to Codename
+        else:                                            # Runs when the player was found
+            self.codename_entry.insert(0, codename)  # Fills in the saved codename
+            self.set_status(
+                f"Found {codename} - enter their equipment ID",
+                "#39ff14"                          # Shows the message in green
+            )
+            self.equipment_id_entry.focus()              # Moves the cursor to Equipment ID
+
+    def set_status(self, text, color="#cccccc"):    # Shows a message under the entry fields
+        self.status_label.config(text=text, fg=color)    # Updates the message text and color
+
+    def close_app(self):                                 # Runs when the window is closed
+        self.db.close()                                  # Closes the database connection
+        self.root.destroy()                              # Closes the window
+
 
     def clear_entry_fields(self):                        # Clears the player entry text boxes
-        self.player_id_entry.delete(0, tk.END)           # Clears Player ID
-        self.codename_entry.delete(0, tk.END)            # Clears Codename
-        self.equipment_id_entry.delete(0, tk.END)        # Clears Equipment ID
+        self.player_id_entry.delete(0, tk.END)      # Clears Player ID
+        self.codename_entry.delete(0, tk.END)       # Clears Codename
+        self.equipment_id_entry.delete(0, tk.END)   # Clears Equipment ID
+        self.last_looked_up_id = None                    # Forgets the last looked-up ID
+        self.set_status("Enter a player ID and press Enter or Tab")  # Resets the instructions
         self.player_id_entry.focus()                     # Returns the cursor to Player ID
 
 
@@ -441,8 +541,8 @@ class LaserTagApp:                                       # Controls the laser ta
 
         self.red_players.clear()                         # Removes stored red team players
         self.green_players.clear()                       # Removes stored green team players
-        self.red_listbox.delete(0, tk.END)               # Clears the red team display
-        self.green_listbox.delete(0, tk.END)             # Clears the green team display
+        self.red_listbox.delete(0, tk.END)          # Clears the red team display
+        self.green_listbox.delete(0, tk.END)        # Clears the green team display
         self.clear_entry_fields()                        # Clears the input fields
 
 
