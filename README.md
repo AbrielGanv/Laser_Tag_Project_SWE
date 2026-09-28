@@ -10,7 +10,7 @@ AbrielGanv           | Gabriel Vang
 Khanah2022           | Ahmed Khan
 
 Requirements
-- Debian Linux
+- Debian-based Linux (Debian or Ubuntu)
 - Python 3
 - PostgreSQL
 - Tkinter
@@ -18,7 +18,7 @@ Requirements
 - psycopg2
 
 Installation
-1. Open a terminal on the Debian vm
+1. Open a terminal on the Debian or Ubuntu VM
 2. Clone the GitHub repository: git clone https://github.com/AbrielGanv/Laser_Tag_Project_SWE
 3. Move into the project folder: cd Laser_Tag_Project_SWE
 4. Run the installation script: bash install.sh
