@@ -3,6 +3,10 @@ from tkinter import messagebox                            # Creates popup messag
 from pathlib import Path                                 # Creates reliable file paths
 from PIL import Image, ImageTk                           # Opens and displays images
 from database import PlayerDatabase
+import ipaddress                                          # Validates network addresses
+from udp_files.udp_transmit import broadcast_equipment_code  # Sends equipment IDs over UDP
+
+BROADCAST_PORT = 7500                                    # UDP port that equipment codes are sent to
 
 class LaserTagApp:                                       # Controls the laser tag application
 
@@ -14,6 +18,7 @@ class LaserTagApp:                                       # Controls the laser ta
 
         self.red_players = []                            # Stores red team players
         self.green_players = []                          # Stores green team players
+        self.broadcast_ip = "127.0.0.1"                  # Default network address for UDP broadcasts
         self.db = PlayerDatabase()                       # Connects to the photon database when first used
         self.root.protocol("WM_DELETE_WINDOW",           # Closes the database when the application closes
                            self.close_app)
@@ -336,6 +341,48 @@ class LaserTagApp:                                       # Controls the laser ta
             expand=True                                  # Uses the available green frame space
         )
 
+        network_frame = tk.Frame(
+            self.root,                                   # Places the network controls in the main window
+            bg="#171717"                                 # Matches the window background
+        )
+
+        network_frame.pack(pady=(0, 10))                 # Displays the network controls above the buttons
+
+        tk.Label(
+            network_frame,                               # Places the label in the network frame
+            text="Network Address:",                     # Sets the label text
+            font=("Arial", 11),                          # Sets the label font
+            fg="white",                                  # Sets the label text color
+            bg="#171717"                                 # Matches the window background
+        ).pack(side="left", padx=5)
+
+        self.network_entry = tk.Entry(
+            network_frame,                               # Places the entry in the network frame
+            font=("Arial", 11),                          # Sets the entry font
+            width=16                                     # Fits a full IPv4 address
+        )
+
+        self.network_entry.insert(0, self.broadcast_ip)  # Shows the current address
+        self.network_entry.pack(side="left", padx=5)
+        self.network_entry.bind("<Return>", self.change_network)  # Enter also applies the address
+
+        tk.Button(
+            network_frame,                               # Places the button in the network frame
+            text="Apply",                                # Sets the button text
+            font=("Arial", 11, "bold"),                  # Sets the button font
+            command=self.change_network                  # Calls change_network when clicked
+        ).pack(side="left", padx=5)
+
+        self.network_label = tk.Label(
+            network_frame,                               # Places the label in the network frame
+            text=f"Broadcasting to {self.broadcast_ip}:{BROADCAST_PORT}",  # Shows the active address
+            font=("Arial", 11),                          # Sets the label font
+            fg="#cccccc",                                # Sets the label text color
+            bg="#171717"                                 # Matches the window background
+        )
+
+        self.network_label.pack(side="left", padx=10)
+
         controls_frame = tk.Frame(
             self.root,                                   # Places the controls in the main window
             bg="#171717"                                 # Matches the window background
@@ -475,6 +522,18 @@ class LaserTagApp:                                       # Controls the laser ta
 
         self.clear_entry_fields()                        # Clears the fields for the next player
 
+        try:
+            broadcast_equipment_code(                    # Broadcasts the new player's equipment ID
+                equipment_id,
+                broadcast_ip=self.broadcast_ip,          # Uses the network chosen by the operator
+                port=BROADCAST_PORT
+            )
+        except OSError as error:                         # Runs when the network can't be reached
+            messagebox.showerror(
+                "Broadcast Failed",
+                f"Could not broadcast to {self.broadcast_ip}: {error}"
+            )
+
         self.set_status(
             f"Added {codename} to the {team} team", # Confirms the player was added
             "#39ff14"  # Shows the message in green
@@ -509,6 +568,26 @@ class LaserTagApp:                                       # Controls the laser ta
                 "#39ff14"                          # Shows the message in green
             )
             self.equipment_id_entry.focus()              # Moves the cursor to Equipment ID
+
+    def change_network(self, event=None):                # Changes the UDP broadcast address
+        new_ip = self.network_entry.get().strip()        # Gets the typed address
+
+        try:
+            ipaddress.IPv4Address(new_ip)                # Checks that it is a valid IPv4 address
+        except ValueError:                               # Runs when the address is invalid
+            messagebox.showerror(
+                "Invalid Address",
+                f"'{new_ip}' is not a valid IPv4 address"
+            )
+            self.network_entry.delete(0, tk.END)         # Removes the bad address
+            self.network_entry.insert(0, self.broadcast_ip)  # Restores the current address
+            return                                       # Stops the function
+
+        self.broadcast_ip = new_ip                       # Saves the new address
+        self.network_label.config(
+            text=f"Broadcasting to {new_ip}:{BROADCAST_PORT}"  # Shows the new address
+        )
+        self.set_status(f"Network changed to {new_ip}", "#39ff14")
 
     def set_status(self, text, color="#cccccc"):    # Shows a message under the entry fields
         self.status_label.config(text=text, fg=color)    # Updates the message text and color
