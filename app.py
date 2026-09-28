@@ -4,9 +4,15 @@ from pathlib import Path                                 # Creates reliable file
 from PIL import Image, ImageTk                           # Opens and displays images
 from database import PlayerDatabase
 import ipaddress                                          # Validates network addresses
-from udp_files.udp_transmit import broadcast_equipment_code  # Sends equipment IDs over UDP
-
-BROADCAST_PORT = 7500                                    # UDP port that equipment codes are sent to
+import queue
+from udp_files.udp_transmit import (
+    broadcast_equipment_code, UDPReceiver, BROADCAST_PORT, RECEIVE_PORT
+)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()                     # Reads settings from the .env file, if there is one
+except ImportError:
+    pass                              # Falls back to normal environment variables
 
 class LaserTagApp:                                       # Controls the laser tag application
 
@@ -25,6 +31,15 @@ class LaserTagApp:                                       # Controls the laser ta
 
         self.root.bind("<F5>", self.start_game)          # Connects F5 to the Start Game function
         self.root.bind("<F12>", self.clear_all_players)  # Connects F12 to the Clear All function
+
+        self.incoming = queue.Queue()
+        self.receiver = UDPReceiver(lambda msg, addr: self.incoming.put((msg, addr)))
+        try:
+            self.receiver.start()
+        except OSError as error:
+            messagebox.showerror("Receive Socket Failed",
+                                f"Could not listen on 0.0.0.0:{RECEIVE_PORT}: {error}")
+        self.root.after(100, self.poll_incoming)
 
         self.show_splash_screen()                        # Displays the splash screen first
 
@@ -592,7 +607,20 @@ class LaserTagApp:                                       # Controls the laser ta
     def set_status(self, text, color="#cccccc"):    # Shows a message under the entry fields
         self.status_label.config(text=text, fg=color)    # Updates the message text and color
 
+    def poll_incoming(self):                             # Drains messages received over UDP
+        try:
+            while True:
+                msg, addr = self.incoming.get_nowait()   # Raises queue.Empty when nothing is left
+                self.handle_message(msg, addr)
+        except queue.Empty:
+            pass
+        self.root.after(100, self.poll_incoming)         # Checks again in 100 ms
+
+    def handle_message(self, msg, addr):                 # Handles one received UDP message
+        print(f"Received {msg!r} from {addr}")           # Replace with real game logic later
+
     def close_app(self):                                 # Runs when the window is closed
+        self.receiver.stop()
         self.db.close()                                  # Closes the database connection
         self.root.destroy()                              # Closes the window
 
