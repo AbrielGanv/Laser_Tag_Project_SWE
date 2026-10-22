@@ -3,6 +3,7 @@ from tkinter import messagebox                            # Creates popup messag
 from pathlib import Path                                 # Creates reliable file paths
 from PIL import Image, ImageTk                           # Opens and displays images
 from database import PlayerDatabase
+from countdown import CountdownTimer, GAME_START_SECONDS  # Pre-game 30 second countdown
 import ipaddress                                          # Validates network addresses
 import queue
 from udp_files.udp_transmit import (
@@ -25,6 +26,7 @@ class LaserTagApp:                                       # Controls the laser ta
         self.red_players = []                            # Stores red team players
         self.green_players = []                          # Stores green team players
         self.broadcast_ip = "127.0.0.1"                  # Default network address for UDP broadcasts
+        self.countdown = None                            # Active pre-game countdown, if any
         self.db = PlayerDatabase()                       # Connects to the photon database when first used
         self.root.protocol("WM_DELETE_WINDOW",           # Closes the database when the application closes
                            self.close_app)
@@ -648,6 +650,9 @@ class LaserTagApp:                                       # Controls the laser ta
 
 
     def clear_all_players(self, event=None):             # Removes all entered players
+        if self.countdown is not None and self.countdown.running:  # Blocks F12 during the countdown
+            return                                       # Stops the function
+
         if not self.red_players and not self.green_players:  # Checks whether both teams are empty
             return                                       # Stops when there is nothing to clear
 
@@ -674,10 +679,39 @@ class LaserTagApp:                                       # Controls the laser ta
             )
             return                                       # Stops the function
 
-        messagebox.showinfo(
-            "Start Game",
-            "Player entry is complete and the gameplay screen will open here"
+        if self.countdown is not None and self.countdown.running:  # Ignores F5 while already counting down
+            return                                       # Stops the function
+
+        self.root.bind("<Escape>", self.cancel_countdown)  # Esc aborts the countdown
+        self.countdown = CountdownTimer(
+            self.root,                                   # Covers the whole main window
+            on_complete=self.countdown_finished,         # Runs when the timer hits 0
+            seconds=GAME_START_SECONDS,                  # 30 second pre-game countdown
+            on_cancel=self.countdown_cancelled           # Runs if Esc is pressed
         )
+        self.countdown.start()                           # Shows the countdown images
+
+
+    def cancel_countdown(self, event=None):              # Handles Esc during the countdown
+        if self.countdown is not None:
+            self.countdown.cancel()
+
+
+    def countdown_cancelled(self):                       # Returns to player entry after Esc
+        self.root.unbind("<Escape>")
+        self.countdown = None
+        self.set_status("Game start cancelled", "#ffd966")
+
+
+    def countdown_finished(self):                        # Runs when the 30 second countdown ends
+        self.root.unbind("<Escape>")
+        self.countdown = None
+        # Hand-off point: the play action display (Sprint 3) should be opened here,
+        # e.g. self.show_play_action(). Sprint 4 will also broadcast code 202 here.
+        if hasattr(self, "show_play_action"):            # Uses the play action screen once it exists
+            self.show_play_action()
+        else:
+            messagebox.showinfo("Game Start", "Countdown complete - the game has started")
 
 
 if __name__ == "__main__":                               # Runs only when app.py is started directly

@@ -40,3 +40,8 @@ UDP transmit port: 7500
 This can be configured while within the program. 
 
 The network address can be changed inside the application.
+
+Game Controls
+- F5: Start the game. A 30 second countdown (countdown_images/) runs before play begins.
+- Esc: Cancel the countdown and return to player entry.
+- F12: Clear all player entries (disabled while the countdown is running).
