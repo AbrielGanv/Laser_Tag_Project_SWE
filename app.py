@@ -191,8 +191,7 @@ class LaserTagApp:                                       # Controls the laser ta
                                   self.look_up_player)   # Tabbing out of Player ID also looks it up
         self.codename_entry.bind(
             "<Return>",                                  # Enter in Codename
-            lambda event: self.equipment_id_entry
-            .focus()                                     # Moves on to Equipment ID
+            self.codename_entered                        # Prompts for the hardware ID
         )
         self.equipment_id_entry.bind(
             "<Return>",                                  # Enter in Equipment ID
@@ -577,12 +576,25 @@ class LaserTagApp:                                       # Controls the laser ta
             )
             self.codename_entry.focus()                  # Moves the cursor to Codename
         else:                                            # Runs when the player was found
-            self.codename_entry.insert(0, codename)  # Fills in the saved codename
-            self.set_status(
-                f"Found {codename} - enter their equipment ID",
-                "#39ff14"                          # Shows the message in green
-            )
-            self.equipment_id_entry.focus()              # Moves the cursor to Equipment ID
+            self.codename_entry.insert(0, codename) #Fills in the saved codename
+            self.prompt_for_hardware_id(codename)        # Asks for player's hardware ID
+
+    def codename_entered(self, event=None):              # Runs when Enter is pressed in Codename
+        codename = self.codename_entry.get().strip()     # Gets the typed codename
+
+        if not codename:                                 # Checks whether a codename was typed
+            self.set_status("Enter a codename first", "#ff6b6b")
+            return                                       # Stops the function
+
+        self.prompt_for_hardware_id(codename)            # Asks for the player's hardware ID
+
+    def prompt_for_hardware_id(self, codename):          # Prompts the operator for a hardware ID
+        self.set_status(
+            f"Enter the hardware ID for {codename}",     # Tells the operator what to type next
+            "#ffd966"                                    # Shows the message in yellow
+        )
+        self.equipment_id_entry.config(bg="#fff3b0")     # Highlights the Equipment ID box
+        self.equipment_id_entry.focus()                  # Moves the cursor to Equipment ID
 
     def change_network(self, event=None):                # Changes the UDP broadcast address
         new_ip = self.network_entry.get().strip()        # Gets the typed address
@@ -630,6 +642,7 @@ class LaserTagApp:                                       # Controls the laser ta
         self.codename_entry.delete(0, tk.END)       # Clears Codename
         self.equipment_id_entry.delete(0, tk.END)   # Clears Equipment ID
         self.last_looked_up_id = None                    # Forgets the last looked-up ID
+        self.equipment_id_entry.config(bg="white")       # Remove the hardware ID highlight
         self.set_status("Enter a player ID and press Enter or Tab")  # Resets the instructions
         self.player_id_entry.focus()                     # Returns the cursor to Player ID
 
