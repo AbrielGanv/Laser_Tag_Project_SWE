@@ -702,6 +702,132 @@ class LaserTagApp:                                       # Controls the laser ta
         self.countdown = None
         self.set_status("Game start cancelled", "#ffd966")
 
+    def show_play_action(self):                             # Creates the play action display
+        self.clear_screen()                                # Removes the player entry screen
+        self.root.configure(bg="#171717")                  # Sets the play action background
+
+        heading = tk.Label(
+            self.root,                                     # Places the heading in the main window
+            text="Photon Laser Tag - Play Action",         # Sets the play action heading text
+            font=("Arial", 26, "bold"),                    # Sets the heading font
+            fg="white",                                    # Sets the heading text color
+            bg="#171717"                                   # Matches the window background
+        )
+
+        heading.pack(pady=15)                              # Displays the heading with vertical spacing
+
+        teams_frame = tk.Frame(
+            self.root,                                     # Places the teams in the main window
+            bg="#171717"                                   # Matches the window background
+        )
+
+        teams_frame.pack(
+            fill="both",                                   # Stretches the frame horizontally and vertically
+            expand=True,                                   # Uses the remaining window space
+            padx=30,                                       # Adds horizontal spacing
+            pady=15                                        # Adds vertical spacing
+        )
+
+        red_frame = tk.Frame(
+            teams_frame,                                   # Places the red team in the teams frame
+            bg="#3b1111",                                  # Sets the red team background
+            padx=15,                                       # Adds horizontal spacing inside the frame
+            pady=10                                        # Adds vertical spacing inside the frame
+        )
+
+        red_frame.pack(
+            side="left",                                   # Places the red team on the left
+            fill="both",                                   # Stretches the red team frame
+            expand=True,                                   # Uses available space
+            padx=(0, 10)                                   # Adds spacing to the right
+        )
+
+        red_heading = tk.Label(
+            red_frame,                                     # Places the heading in the red team frame
+            text="RED TEAM",                               # Sets the red team heading
+            font=("Arial", 20, "bold"),                    # Sets the heading font
+            fg="white",                                    # Sets the heading text color
+            bg="#3b1111"                                   # Matches the red team background
+        )
+
+        red_heading.pack(pady=5)                           # Displays the red team heading
+
+        red_listbox = tk.Listbox(
+            red_frame,                                     # Places the player list in the red frame
+            font=("Arial", 14),                            # Sets the player list font
+            bg="#fff0f0"                                   # Sets the red player list background
+        )
+
+        red_listbox.pack(
+            fill="both",                                   # Stretches the player list
+            expand=True                                    # Uses available red team space
+        )
+
+        for number, player in enumerate(
+            self.red_players, start=1                      # Goes through every entered red player
+        ):
+            player_text = (
+                f"{number}. "                              # Displays the player's team number
+                f"{player['codename']} | "                 # Displays the player's codename
+                f"Player ID: {player['player_id']} | "     # Displays the player's ID
+                f"Equipment: {player['equipment_id']}"     # Displays the player's equipment ID
+            )
+
+            red_listbox.insert(
+                tk.END,                                    # Adds the player to the end of the list
+                player_text                                # Displays the red player's information
+            )
+
+        green_frame = tk.Frame(
+            teams_frame,                                   # Places the green team in the teams frame
+            bg="#113b1b",                                  # Sets the green team background
+            padx=15,                                       # Adds horizontal spacing inside the frame
+            pady=10                                        # Adds vertical spacing inside the frame
+        )
+
+        green_frame.pack(
+            side="right",                                  # Places the green team on the right
+            fill="both",                                   # Stretches the green team frame
+            expand=True,                                   # Uses available space
+            padx=(10, 0)                                   # Adds spacing to the left
+        )
+
+        green_heading = tk.Label(
+            green_frame,                                   # Places the heading in the green team frame
+            text="GREEN TEAM",                             # Sets the green team heading
+            font=("Arial", 20, "bold"),                    # Sets the heading font
+            fg="white",                                    # Sets the heading text color
+            bg="#113b1b"                                   # Matches the green team background
+        )
+
+        green_heading.pack(pady=5)                         # Displays the green team heading
+
+        green_listbox = tk.Listbox(
+            green_frame,                                   # Places the player list in the green frame
+            font=("Arial", 14),                            # Sets the player list font
+            bg="#effff1"                                   # Sets the green player list background
+        )
+
+        green_listbox.pack(
+            fill="both",                                   # Stretches the player list
+            expand=True                                    # Uses available green team space
+        )
+
+        for number, player in enumerate(
+            self.green_players, start=1                    # Goes through every entered green player
+        ):
+            player_text = (
+                f"{number}. "                              # Displays the player's team number
+                f"{player['codename']} | "                 # Displays the player's codename
+                f"Player ID: {player['player_id']} | "     # Displays the player's ID
+                f"Equipment: {player['equipment_id']}"     # Displays the player's equipment ID
+            )
+
+            green_listbox.insert(
+                tk.END,                                    # Adds the player to the end of the list
+                player_text                                # Displays the green player's information
+            )
+
 
     def countdown_finished(self):                        # Runs when the 30 second countdown ends
         self.root.unbind("<Escape>")
