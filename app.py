@@ -27,6 +27,7 @@ class LaserTagApp:                                       # Controls the laser ta
         self.green_players = []                          # Stores green team players
         self.broadcast_ip = "127.0.0.1"                  # Default network address for UDP broadcasts
         self.countdown = None                            # Active pre-game countdown, if any
+        self.screen = "splash"
         self.db = PlayerDatabase()                       # Connects to the photon database when first used
         self.root.protocol("WM_DELETE_WINDOW",           # Closes the database when the application closes
                            self.close_app)
@@ -79,6 +80,7 @@ class LaserTagApp:                                       # Controls the laser ta
 
     def show_player_entry(self):                         # Creates the player entry screen
         self.clear_screen()                              # Removes the splash screen
+        self.screen = "entry"
         self.root.configure(bg="#171717")                # Sets the player entry background
 
         heading = tk.Label(
@@ -650,6 +652,8 @@ class LaserTagApp:                                       # Controls the laser ta
 
 
     def clear_all_players(self, event=None):             # Removes all entered players
+        if self.screen != "entry":
+            return
         if self.countdown is not None and self.countdown.running:  # Blocks F12 during the countdown
             return                                       # Stops the function
 
@@ -672,6 +676,8 @@ class LaserTagApp:                                       # Controls the laser ta
 
 
     def start_game(self, event=None):                    # Handles the Start Game control
+        if self.screen != "entry":
+            return
         if not self.red_players and not self.green_players:  # Checks whether any players were entered
             messagebox.showwarning(
                 "No Players",
@@ -703,6 +709,7 @@ class LaserTagApp:                                       # Controls the laser ta
         self.set_status("Game start cancelled", "#ffd966")
 
     def show_play_action(self):                             # Creates the play action display
+        self.screen = "play"
         self.clear_screen()                                # Removes the player entry screen
         self.root.configure(bg="#171717")                  # Sets the play action background
 
