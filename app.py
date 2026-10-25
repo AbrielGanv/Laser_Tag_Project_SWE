@@ -2,7 +2,7 @@ import tkinter as tk                                      # Creates the graphica
 from tkinter import messagebox                            # Creates popup messages
 from pathlib import Path                                 # Creates reliable file paths
 from PIL import Image, ImageTk                           # Opens and displays images
-from database import PlayerDatabase
+from database import PlayerDatabase, PlayerDatabaseError
 from countdown import CountdownTimer, GAME_START_SECONDS  # Pre-game 30 second countdown
 import ipaddress                                          # Validates network addresses
 import queue
@@ -432,10 +432,13 @@ class LaserTagApp:                                       # Controls the laser ta
             padx=10                                      # Adds horizontal spacing
         )
 
+        self.restore_team_lists()
         self.player_id_entry.focus()                     # Places the typing cursor in Player ID
 
 
     def add_player(self):                                # Validates and adds a player
+        if self.screen != "entry" or (self.countdown is not None and self.countdown.running):
+            return
         player_id = self.player_id_entry.get().strip()   # Gets the entered player ID
         codename = self.codename_entry.get().strip()     # Gets the entered codename
         equipment_id = self.equipment_id_entry.get().strip()  # Gets the equipment ID
@@ -496,7 +499,11 @@ class LaserTagApp:                                       # Controls the laser ta
             )
             return                                       # Stops the function
 
-        saved_codename = self.db.get_codename(player_id) # Looks up the Player ID in the database
+        try:
+            saved_codename = self.db.get_codename(player_id)
+        except PlayerDatabaseError as error:
+            self.show_database_error(error)
+            return
 
         if saved_codename is not None:                   # Checks whether the player is already in the database
             codename = saved_codename                    # Uses the codename saved in the database
@@ -516,7 +523,11 @@ class LaserTagApp:                                       # Controls the laser ta
             self.codename_entry.focus()                  # Moves the cursor to Codename
             return                                       # Stops the function
         else:                                            # Runs when a new player has a valid codename
-            self.db.add_player(player_id, codename)      # Saves the new player in the database
+            try:
+                self.db.add_player(player_id, codename)
+            except PlayerDatabaseError as error:
+                self.show_database_error(error)
+                return
 
         player = {
             "player_id": player_id,                      # Stores the Player ID
@@ -558,6 +569,8 @@ class LaserTagApp:                                       # Controls the laser ta
         )
 
     def look_up_player(self, event=None):                # Fills in the codename when a Player ID is entered
+        if self.screen != "entry" or (self.countdown is not None and self.countdown.running):
+            return
         player_id = self.player_id_entry.get().strip()   # Gets the entered player ID
 
         if not player_id.isdigit():                      # Checks whether Player ID is an integer
@@ -568,7 +581,11 @@ class LaserTagApp:                                       # Controls the laser ta
         if player_id == self.last_looked_up_id:          # Skips IDs that were just looked up
             return  # Stops the function
 
-        codename = self.db.get_codename(player_id)       # Looks up the codename in the database
+        try:
+            codename = self.db.get_codename(player_id)
+        except PlayerDatabaseError as error:
+            self.show_database_error(error)
+            return
         self.last_looked_up_id = player_id               # Remembers this ID after a successful lookup
 
         self.codename_entry.delete(0, tk.END)       # Clears any old codename
@@ -658,7 +675,8 @@ class LaserTagApp:                                       # Controls the laser ta
             return                                       # Stops the function
 
         if not self.red_players and not self.green_players:  # Checks whether both teams are empty
-            return                                       # Stops when there is nothing to clear
+            self.clear_entry_fields()
+            return
 
         confirmed = messagebox.askyesno(
             "Clear All Players",
@@ -839,12 +857,28 @@ class LaserTagApp:                                       # Controls the laser ta
     def countdown_finished(self):                        # Runs when the 30 second countdown ends
         self.root.unbind("<Escape>")
         self.countdown = None
-        # Hand-off point: the play action display (Sprint 3) should be opened here,
-        # e.g. self.show_play_action(). Sprint 4 will also broadcast code 202 here.
-        if hasattr(self, "show_play_action"):            # Uses the play action screen once it exists
-            self.show_play_action()
-        else:
-            messagebox.showinfo("Game Start", "Countdown complete - the game has started")
+        self.show_play_action()
+
+    def restore_team_lists(self):
+        for players, listbox in (
+            (self.red_players, self.red_listbox),
+            (self.green_players, self.green_listbox)
+        ):
+            listbox.delete(0, tk.END)
+            for number, player in enumerate(players, start=1):
+                listbox.insert(tk.END,
+                    f"{number}. {player['codename']} | "
+                    f"Player ID: {player['player_id']} | Equipment: {player['equipment_id']}")
+
+    def show_database_error(self, error):
+        self.set_status("Database unavailable. Check your connection and try again.", "#ff6b6b")
+        messagebox.showerror(
+            "Database Error",
+            "Could not read or save the player. Your entered information has been kept.\n\n"
+            "Check that PostgreSQL is running and photon contains the players table.\n"
+            "See the README for database setup."
+        )
+
 
 
 if __name__ == "__main__":                               # Runs only when app.py is started directly
