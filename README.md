@@ -1,47 +1,54 @@
-README
+# Photon Laser Tag
 
-Team Members
-GitHub Username | Real Name
-----------------|----------
-matthewworkman62-alt | Matthew Workman
-BrittonAdair3        | Britton Adair
-purge911             | Ibrahim Khan        
-AbrielGanv           | Gabriel Vang      
-Khanah2022           | Ahmed Khan
+## Team Members
 
-Requirements
-- Debian-based Linux (Debian or Ubuntu)
-- Python 3
-- PostgreSQL
-- Tkinter
-- Pillow
-- psycopg2
+| GitHub Username | Real Name |
+| --- | --- |
+| matthewworkman62-alt | Matthew Workman |
+| BrittonAdair3 | Britton Adair |
+| purge911 | Ibrahim Khan |
+| AbrielGanv | Gabriel Vang |
+| Khanah2022 | Ahmed Khan |
 
-Installation
-1. Open a terminal on the Debian or Ubuntu VM
-2. Clone the GitHub repository: git clone https://github.com/AbrielGanv/Laser_Tag_Project_SWE
-3. Move into the project folder: cd Laser_Tag_Project_SWE
-4. Run the installation script: bash install.sh
-5. Wait for all required packages to finish installing.
+## Installation
 
-Running the Program
-1. Make sure you are inside the project folder.
-2. Run the application with: python3 app.py
-3. The laser tag application should open.
+Use the Debian VM with PostgreSQL already set up.
+The program expects a database named `photon` with a table named `players` containing `id` and `codename` columns.
 
-Database
-The program expects PostgreSQL to already contain:
-Database: photon
-Table: players
+1. Open a terminal.
+2. Download the project:
+   ```bash
+   git clone https://github.com/AbrielGanv/Laser_Tag_Project_SWE
+   ```
+3. Open the project folder:
+   ```bash
+   cd Laser_Tag_Project_SWE
+   ```
+4. Install the Python dependencies:
+   ```bash
+   bash install.sh
+   ```
+5. Start the program:
+   ```bash
+   python3 app.py
+   ```
 
-Networking
-Default network address: 127.0.0.1
-UDP transmit port: 7500
-This can be configured while within the program. 
+Keep all project files together, including the `udp_files` folder and `logo.jpg`.
 
-The network address can be changed inside the application.
+## Using the Program
 
-Game Controls
-- F5: Start the game. A 30 second countdown (countdown_images/) runs before play begins.
-- Esc: Cancel the countdown and return to player entry.
-- F12: Clear all player entries (disabled while the countdown is running).
+1. Select the red or green team.
+2. Enter a player ID and press Enter. Existing players will have their codename filled in.
+3. Enter a codename if the player is new.
+4. Enter the hardware ID in the Equipment ID box.
+5. Click Add Player. Repeat for each player.
+
+## Controls
+
+- F5 / Start Game: Start the 30-second countdown, then show the team rosters on the play action screen.
+- Esc: Cancel the countdown.
+- F12 / Clear All: Clear the players and input fields on the entry screen. This is disabled during the countdown.
+
+The network address can be changed on the player entry screen. The default is `127.0.0.1`, with transmit port `7500` and receive port `7501`.
+
+Countdown images are optional. Without them, the timer displays numbers. Scoring and hit events are not implemented for Sprint 3.
