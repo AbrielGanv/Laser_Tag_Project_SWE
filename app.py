@@ -27,6 +27,8 @@ class LaserTagApp:                                       # Controls the laser ta
         self.green_players = []                          # Stores green team players
         self.broadcast_ip = "127.0.0.1"                  # Default network address for UDP broadcasts
         self.countdown = None                            # Active pre-game countdown, if any
+        self.game_time_remaining = 360                   # Stores the six minute game time in seconds
+        self.game_timer_job = None                       # Stores the scheduled game timer update
         self.screen = "splash"
         self.db = PlayerDatabase()                       # Connects to the photon database when first used
         self.root.protocol("WM_DELETE_WINDOW",           # Closes the database when the application closes
@@ -726,138 +728,278 @@ class LaserTagApp:                                       # Controls the laser ta
         self.countdown = None
         self.set_status("Game start cancelled", "#ffd966")
 
-    def show_play_action(self):                             # Creates the play action display
-        self.screen = "play"
-        self.clear_screen()                                # Removes the player entry screen
-        self.root.configure(bg="#171717")                  # Sets the play action background
+    def show_play_action(self):                           # Creates the play action display
+        self.screen = "play"                              # Marks the current screen as play action
+        self.clear_screen()                               # Removes the player entry screen
+        self.root.configure(bg="#171717")                 # Sets the play action background
 
         heading = tk.Label(
-            self.root,                                     # Places the heading in the main window
-            text="Photon Laser Tag - Play Action",         # Sets the play action heading text
-            font=("Arial", 26, "bold"),                    # Sets the heading font
-            fg="white",                                    # Sets the heading text color
-            bg="#171717"                                   # Matches the window background
+            self.root,                                    # Places the heading in the main window
+            text="Photon Laser Tag - Play Action",        # Sets the play action heading text
+            font=("Arial", 26, "bold"),                   # Sets the heading font
+            fg="white",                                   # Sets the heading text color
+            bg="#171717"                                  # Matches the window background
         )
 
-        heading.pack(pady=15)                              # Displays the heading with vertical spacing
+        heading.pack(pady=(15, 10))                       # Displays the heading with vertical spacing
+
+        self.game_timer_label = tk.Label(
+            self.root,                                        # Places the game timer in the main window
+            text="GAME TIME: 6:00",                           # Sets the starting game time
+            font=("Arial", 20, "bold"),                       # Sets the game timer font
+            fg="white",                                       # Sets the game timer text color
+            bg="#171717"                                    # Matches the window background
+        )
+
+        self.game_timer_label.pack(pady=(0, 5))               # Displays the game timer below the heading
 
         teams_frame = tk.Frame(
-            self.root,                                     # Places the teams in the main window
-            bg="#171717"                                   # Matches the window background
+            self.root,                                    # Places the teams in the main window
+            bg="#171717"                                  # Matches the window background
         )
 
         teams_frame.pack(
-            fill="both",                                   # Stretches the frame horizontally and vertically
-            expand=True,                                   # Uses the remaining window space
-            padx=30,                                       # Adds horizontal spacing
-            pady=15                                        # Adds vertical spacing
+            fill="both",                                  # Stretches the frame horizontally and vertically
+            expand=True,                                  # Uses the remaining window space
+            padx=30,                                      # Adds horizontal spacing
+            pady=(5, 10)                                  # Adds vertical spacing
         )
 
         red_frame = tk.Frame(
-            teams_frame,                                   # Places the red team in the teams frame
-            bg="#3b1111",                                  # Sets the red team background
-            padx=15,                                       # Adds horizontal spacing inside the frame
-            pady=10                                        # Adds vertical spacing inside the frame
+            teams_frame,                                  # Places the red team in the teams frame
+            bg="#3b1111",                                 # Sets the red team background
+            padx=15,                                      # Adds horizontal spacing inside the frame
+            pady=10                                       # Adds vertical spacing inside the frame
         )
 
         red_frame.pack(
-            side="left",                                   # Places the red team on the left
-            fill="both",                                   # Stretches the red team frame
-            expand=True,                                   # Uses available space
-            padx=(0, 10)                                   # Adds spacing to the right
+            side="left",                                  # Places the red team on the left
+            fill="both",                                  # Stretches the red team frame
+            expand=True,                                  # Uses available space
+            padx=(0, 10)                                  # Adds spacing to the right
         )
 
         red_heading = tk.Label(
-            red_frame,                                     # Places the heading in the red team frame
-            text="RED TEAM",                               # Sets the red team heading
-            font=("Arial", 20, "bold"),                    # Sets the heading font
-            fg="white",                                    # Sets the heading text color
-            bg="#3b1111"                                   # Matches the red team background
+            red_frame,                                    # Places the heading in the red team frame
+            text="RED TEAM",                              # Sets the red team heading
+            font=("Arial", 20, "bold"),                   # Sets the heading font
+            fg="white",                                   # Sets the heading text color
+            bg="#3b1111"                                  # Matches the red team background
         )
 
-        red_heading.pack(pady=5)                           # Displays the red team heading
+        red_heading.pack(pady=5)                          # Displays the red team heading
 
-        red_listbox = tk.Listbox(
-            red_frame,                                     # Places the player list in the red frame
-            font=("Arial", 14),                            # Sets the player list font
-            bg="#fff0f0"                                   # Sets the red player list background
+        self.red_play_listbox = tk.Listbox(
+            red_frame,                                    # Places the player list in the red frame
+            height=8,                                     # Sets the visible player list height
+            font=("Arial", 14),                           # Sets the player list font
+            bg="#fff0f0"                                  # Sets the red player list background
         )
 
-        red_listbox.pack(
-            fill="both",                                   # Stretches the player list
-            expand=True                                    # Uses available red team space
+        self.red_play_listbox.pack(
+            fill="both",                                  # Stretches the player list
+            expand=True                                   # Uses available red team space
         )
 
-        for number, player in enumerate(
-            self.red_players, start=1                      # Goes through every entered red player
-        ):
-            player_text = (
-                f"{number}. "                              # Displays the player's team number
-                f"{player['codename']} | "                 # Displays the player's codename
-                f"Player ID: {player['player_id']} | "     # Displays the player's ID
-                f"Equipment: {player['equipment_id']}"     # Displays the player's equipment ID
-            )
+        self.red_team_score_label = tk.Label(
+            red_frame,                                    # Places the team score in the red frame
+            text="TEAM SCORE: 0",                         # Sets the starting red team score
+            font=("Arial", 16, "bold"),                   # Sets the team score font
+            fg="white",                                   # Sets the team score text color
+            bg="#3b1111"                                  # Matches the red team background
+        )
 
-            red_listbox.insert(
-                tk.END,                                    # Adds the player to the end of the list
-                player_text                                # Displays the red player's information
-            )
+        self.red_team_score_label.pack(pady=(10, 0))      # Displays the red team score
 
         green_frame = tk.Frame(
-            teams_frame,                                   # Places the green team in the teams frame
-            bg="#113b1b",                                  # Sets the green team background
-            padx=15,                                       # Adds horizontal spacing inside the frame
-            pady=10                                        # Adds vertical spacing inside the frame
+            teams_frame,                                  # Places the green team in the teams frame
+            bg="#113b1b",                                 # Sets the green team background
+            padx=15,                                      # Adds horizontal spacing inside the frame
+            pady=10                                       # Adds vertical spacing inside the frame
         )
 
         green_frame.pack(
-            side="right",                                  # Places the green team on the right
-            fill="both",                                   # Stretches the green team frame
-            expand=True,                                   # Uses available space
-            padx=(10, 0)                                   # Adds spacing to the left
+            side="right",                                 # Places the green team on the right
+            fill="both",                                  # Stretches the green team frame
+            expand=True,                                  # Uses available space
+            padx=(10, 0)                                  # Adds spacing to the left
         )
 
         green_heading = tk.Label(
-            green_frame,                                   # Places the heading in the green team frame
-            text="GREEN TEAM",                             # Sets the green team heading
-            font=("Arial", 20, "bold"),                    # Sets the heading font
-            fg="white",                                    # Sets the heading text color
-            bg="#113b1b"                                   # Matches the green team background
+            green_frame,                                  # Places the heading in the green team frame
+            text="GREEN TEAM",                            # Sets the green team heading
+            font=("Arial", 20, "bold"),                   # Sets the heading font
+            fg="white",                                   # Sets the heading text color
+            bg="#113b1b"                                  # Matches the green team background
         )
 
-        green_heading.pack(pady=5)                         # Displays the green team heading
+        green_heading.pack(pady=5)                        # Displays the green team heading
 
-        green_listbox = tk.Listbox(
-            green_frame,                                   # Places the player list in the green frame
-            font=("Arial", 14),                            # Sets the player list font
-            bg="#effff1"                                   # Sets the green player list background
+        self.green_play_listbox = tk.Listbox(
+            green_frame,                                  # Places the player list in the green frame
+            height=8,                                     # Sets the visible player list height
+            font=("Arial", 14),                           # Sets the player list font
+            bg="#effff1"                                  # Sets the green player list background
         )
 
-        green_listbox.pack(
-            fill="both",                                   # Stretches the player list
-            expand=True                                    # Uses available green team space
+        self.green_play_listbox.pack(
+            fill="both",                                  # Stretches the player list
+            expand=True                                   # Uses available green team space
         )
 
-        for number, player in enumerate(
-            self.green_players, start=1                    # Goes through every entered green player
-        ):
+        self.green_team_score_label = tk.Label(
+            green_frame,                                  # Places the team score in the green frame
+            text="TEAM SCORE: 0",                         # Sets the starting green team score
+            font=("Arial", 16, "bold"),                   # Sets the team score font
+            fg="white",                                   # Sets the team score text color
+            bg="#113b1b"                                  # Matches the green team background
+        )
+
+        self.green_team_score_label.pack(pady=(10, 0))    # Displays the green team score
+
+        for player in self.red_players:                   # Goes through every entered red player
+            if "score" not in player:                     # Checks whether the player has a score
+                player["score"] = 0                       # Gives the player a starting score of zero
+
+        for player in self.green_players:                 # Goes through every entered green player
+            if "score" not in player:                     # Checks whether the player has a score
+                player["score"] = 0                       # Gives the player a starting score of zero
+
+        action_frame = tk.Frame(
+            self.root,                                    # Places the play action area in the main window
+            bg="#2b2b2b",                                 # Sets the play action area background
+            padx=15,                                      # Adds horizontal spacing inside the frame
+            pady=10                                       # Adds vertical spacing inside the frame
+        )
+
+        action_frame.pack(
+            fill="both",                                  # Stretches the play action area horizontally
+            padx=30,                                      # Adds horizontal spacing around the frame
+            pady=(0, 20)                                  # Adds spacing below the frame
+        )
+
+        action_heading = tk.Label(
+            action_frame,                                 # Places the heading in the play action frame
+            text="PLAY ACTION",                           # Sets the play action heading text
+            font=("Arial", 18, "bold"),                   # Sets the play action heading font
+            fg="white",                                   # Sets the heading text color
+            bg="#2b2b2b"                                  # Matches the play action frame background
+        )
+
+        action_heading.pack(pady=(0, 5))                  # Displays the play action heading
+
+        self.play_action_listbox = tk.Listbox(
+            action_frame,                                 # Places game messages in the play action frame
+            height=6,                                     # Sets the visible message area height
+            font=("Arial", 13),                           # Sets the message font
+            bg="#eeeeee",                                 # Sets the message area background
+            fg="black"                                    # Sets the message text color
+        )
+
+        self.play_action_listbox.pack(
+            fill="both",                                  # Stretches the message area horizontally
+            expand=True                                   # Uses available play action space
+        )
+
+        self.update_play_action_display()                 # Displays the starting players and scores
+
+
+    def update_play_action_display(self):                 # Updates the play action scores
+        self.red_play_listbox.delete(0, tk.END)           # Clears the current red team display
+        self.green_play_listbox.delete(0, tk.END)         # Clears the current green team display
+
+        for player in self.red_players:                   # Goes through every red team player
+            score = player.get("score", 0)                # Gets the player's current score
             player_text = (
-                f"{number}. "                              # Displays the player's team number
-                f"{player['codename']} | "                 # Displays the player's codename
-                f"Player ID: {player['player_id']} | "     # Displays the player's ID
-                f"Equipment: {player['equipment_id']}"     # Displays the player's equipment ID
+                f"{player['codename']} | "                # Displays the player's codename
+                f"Score: {score}"                         # Displays the player's score
             )
 
-            green_listbox.insert(
-                tk.END,                                    # Adds the player to the end of the list
-                player_text                                # Displays the green player's information
+            self.red_play_listbox.insert(
+                tk.END,                                   # Adds the player to the end of the list
+                player_text                               # Displays the red player's information
             )
 
+        for player in self.green_players:                 # Goes through every green team player
+            score = player.get("score", 0)                # Gets the player's current score
+            player_text = (
+                f"{player['codename']} | "                # Displays the player's codename
+                f"Score: {score}"                         # Displays the player's score
+            )
 
-    def countdown_finished(self):                        # Runs when the 30 second countdown ends
-        self.root.unbind("<Escape>")
-        self.countdown = None
-        self.show_play_action()
+            self.green_play_listbox.insert(
+                tk.END,                                   # Adds the player to the end of the list
+                player_text                               # Displays the green player's information
+            )
+
+        red_team_score = sum(
+            player.get("score", 0)                        # Gets each red player's current score
+            for player in self.red_players                # Goes through every red team player
+        )
+
+        green_team_score = sum(
+            player.get("score", 0)                        # Gets each green player's current score
+            for player in self.green_players              # Goes through every green team player
+        )
+
+        self.red_team_score_label.config(
+            text=f"TEAM SCORE: {red_team_score}"          # Displays the total red team score
+        )
+
+        self.green_team_score_label.config(
+            text=f"TEAM SCORE: {green_team_score}"        # Displays the total green team score
+        )
+
+
+    def add_play_action_message(self, message):            # Adds a message to the play action display
+        if hasattr(self, "play_action_listbox"):           # Checks whether the message area exists
+            self.play_action_listbox.insert(
+                tk.END,                                   # Adds the message to the end of the list
+                message                                   # Displays the new play action message
+            )
+            self.play_action_listbox.see(tk.END)           # Scrolls to the newest game message
+
+    def start_game_timer(self):                           # Starts the six minute gameplay timer
+        if self.game_timer_job is not None:               # Checks whether a game timer is already running
+            self.root.after_cancel(self.game_timer_job)    # Cancels the previous scheduled timer update
+
+        self.game_time_remaining = 360                    # Resets the gameplay timer to six minutes
+        self.update_game_timer()                          # Starts updating the gameplay timer
+
+
+    def update_game_timer(self):                          # Updates the gameplay timer every second
+        minutes = self.game_time_remaining // 60          # Calculates the remaining whole minutes
+        seconds = self.game_time_remaining % 60           # Calculates the remaining seconds
+
+        if hasattr(self, "game_timer_label"):              # Checks whether the timer label exists
+            self.game_timer_label.config(
+                text=f"GAME TIME: {minutes}:{seconds:02d}" # Displays the remaining game time
+            )
+
+        if self.game_time_remaining > 0:                  # Checks whether gameplay time remains
+            self.game_time_remaining -= 1                 # Removes one second from the remaining time
+            self.game_timer_job = self.root.after(
+                1000,                                     # Waits one second before updating again
+                self.update_game_timer                    # Schedules the next timer update
+            )
+        else:
+            self.game_timer_job = None                    # Marks the gameplay timer as finished
+            self.game_finished()                          # Ends the game when the timer reaches zero
+
+
+    def game_finished(self):                              # Handles the end of the six minute game
+        if hasattr(self, "game_timer_label"):              # Checks whether the timer label exists
+            self.game_timer_label.config(
+                text="GAME TIME: 0:00"                    # Displays zero when gameplay ends
+            )
+
+        self.add_play_action_message("GAME OVER")         # Displays the game over message
+    
+    def countdown_finished(self):                         # Runs when the 30 second countdown ends
+        self.root.unbind("<Escape>")                       # Disables the countdown cancel key
+        self.countdown = None                              # Clears the completed countdown
+        self.show_play_action()                            # Opens the play action display
+        self.start_game_timer()                            # Starts the six minute gameplay timer
 
     def restore_team_lists(self):
         for players, listbox in (
