@@ -6,14 +6,21 @@ from database import PlayerDatabase
 from countdown import CountdownTimer, GAME_START_SECONDS  # Pre-game 30 second countdown
 import ipaddress                                          # Validates network addresses
 import queue
+import random
 from udp_files.udp_transmit import (
     broadcast_equipment_code, UDPReceiver, BROADCAST_PORT, RECEIVE_PORT
 )
+try:
+    import pygame
+except ImportError:
+    pygame = None
 try:
     from dotenv import load_dotenv
     load_dotenv()                     # Reads settings from the .env file, if there is one
 except ImportError:
     pass                              # Falls back to normal environment variables
+
+MUSIC_FOLDER = Path(__file__).parent / "photon_tracks"
 
 class LaserTagApp:                                       # Controls the laser tag application
 
@@ -27,6 +34,7 @@ class LaserTagApp:                                       # Controls the laser ta
         self.green_players = []                          # Stores green team players
         self.broadcast_ip = "127.0.0.1"                  # Default network address for UDP broadcasts
         self.countdown = None                            # Active pre-game countdown, if any
+        self.music_playing = False                      # True while game music is playing
         self.screen = "splash"
         self.db = PlayerDatabase()                       # Connects to the photon database when first used
         self.root.protocol("WM_DELETE_WINDOW",           # Closes the database when the application closes
@@ -636,6 +644,7 @@ class LaserTagApp:                                       # Controls the laser ta
         print(f"Received {msg!r} from {addr}")           # Replace with real game logic later
 
     def close_app(self):                                 # Runs when the window is closed
+        self.stop_music()
         self.receiver.stop()
         self.db.close()                                  # Closes the database connection
         self.root.destroy()                              # Closes the window
@@ -688,6 +697,9 @@ class LaserTagApp:                                       # Controls the laser ta
         if self.countdown is not None and self.countdown.running:  # Ignores F5 while already counting down
             return                                       # Stops the function
 
+        if not self.start_music():                       # Starts music at the same time as the countdown
+            return                                       # Stops if the music could not be started
+
         self.root.bind("<Escape>", self.cancel_countdown)  # Esc aborts the countdown
         self.countdown = CountdownTimer(
             self.root,                                   # Covers the whole main window
@@ -705,8 +717,42 @@ class LaserTagApp:                                       # Controls the laser ta
 
     def countdown_cancelled(self):                       # Returns to player entry after Esc
         self.root.unbind("<Escape>")
+        self.stop_music()
         self.countdown = None
         self.set_status("Game start cancelled", "#ffd966")
+
+    def start_music(self):                               # Starts a random track for the countdown and game
+        music_files = list(MUSIC_FOLDER.glob("*.mp3"))
+        if not music_files:
+            messagebox.showerror(
+                "Music Not Found",
+                f"No MP3 files were found in {MUSIC_FOLDER}"
+            )
+            return False
+
+        if pygame is None:
+            messagebox.showerror(
+                "Music Unavailable",
+                "Pygame is required to play game music. Install the project dependencies first."
+            )
+            return False
+
+        try:
+            if not pygame.mixer.get_init():
+                pygame.mixer.init()
+            pygame.mixer.music.load(str(random.choice(music_files)))
+            pygame.mixer.music.play(loops=-1)
+            self.music_playing = True
+        except (pygame.error, OSError) as error:
+            messagebox.showerror("Music Playback Failed", f"Could not start game music: {error}")
+            return False
+
+        return True
+
+    def stop_music(self):                                # Stops music when the countdown is cancelled or app closes
+        if pygame is not None and self.music_playing:
+            pygame.mixer.music.stop()
+        self.music_playing = False
 
     def show_play_action(self):                             # Creates the play action display
         self.screen = "play"

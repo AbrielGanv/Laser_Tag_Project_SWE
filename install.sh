@@ -11,7 +11,8 @@ sudo apt install -y \
     python3-tk \
     python3-psycopg2 \
     python3-pil \
-    python3-pil.imagetk
+    python3-pil.imagetk \
+    python3-pygame
 
 echo "Installation complete."
 echo "Run the program with:"

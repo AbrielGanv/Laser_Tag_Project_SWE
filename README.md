@@ -16,6 +16,7 @@ Requirements
 - Tkinter
 - Pillow
 - psycopg2
+- Pygame
 
 Installation
 1. Open a terminal on the Debian or Ubuntu VM
@@ -43,5 +44,6 @@ The network address can be changed inside the application.
 
 Game Controls
 - F5: Start the game. A 30 second countdown (countdown_images/) runs before play begins.
+- F5 also starts one random track from `photon_tracks/`; the track starts with the countdown and loops during gameplay.
 - Esc: Cancel the countdown and return to player entry.
 - F12: Clear all player entries (disabled while the countdown is running).
