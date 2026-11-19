@@ -34,6 +34,7 @@ class LaserTagApp:                                       # Controls the laser ta
         self.green_players = []                          # Stores green team players
         self.broadcast_ip = "127.0.0.1"                  # Default network address for UDP broadcasts
         self.countdown = None                            # Active pre-game countdown, if any
+        self.game_timer_job = None                       # Stores the scheduled game timer update
         self.music_playing = False                      # True while game music is playing
         self.screen = "splash"
         self.db = PlayerDatabase()                       # Connects to the photon database when first used
@@ -658,7 +659,64 @@ class LaserTagApp:                                       # Controls the laser ta
         self.root.after(100, self.poll_incoming)         # Checks again in 100 ms
 
     def handle_message(self, msg, addr):                 # Handles one received UDP message
-        print(f"Received {msg!r} from {addr}")           # Replace with real game logic later
+        if self.screen != "play":                         # Only processes hits during the game
+            return                                       # Stops the function
+
+        if isinstance(msg, bytes):                        # Checks whether the message is bytes
+            msg = msg.decode("utf-8", errors="replace")   # Converts the message into text
+
+        parts = str(msg).strip().split(":")               # Separates the two equipment IDs
+        if len(parts) != 2 or not all(part.strip().isascii() and part.strip().isdigit() for part in parts):
+            print(f"Invalid hit message {msg!r} from {addr}")  # Ignores messages in the wrong format
+            return                                       # Stops the function
+
+        transmitter_id = int(parts[0].strip())            # Gets the shooter's equipment ID
+        hit_id = int(parts[1].strip())                    # Gets the equipment ID of the player hit
+
+        if transmitter_id == hit_id:                      # Checks whether someone tagged themselves
+            return                                       # Ignores self-hits
+
+        shooter = None                                   # Stores the player doing the tagging
+        target = None                                    # Stores the player who was tagged
+        shooter_team = None                              # Stores the shooter's team
+        target_team = None                               # Stores the tagged player's team
+
+        for team, players in (("red", self.red_players), ("green", self.green_players)):
+            for player in players:                       # Looks for both equipment IDs on both teams
+                if player["equipment_id"] == transmitter_id:
+                    shooter = player                     # Finds the player doing the tagging
+                    shooter_team = team                  # Remembers the shooter's team
+                if player["equipment_id"] == hit_id:
+                    target = player                      # Finds the player who was tagged
+                    target_team = team                   # Remembers the tagged player's team
+
+        if shooter is None or target is None:             # Checks whether both equipment IDs are registered
+            print(f"Unknown equipment in hit message {msg!r} from {addr}")
+            return                                       # Ignores equipment that was not entered
+
+        equipment_to_broadcast = [hit_id]                 # Always broadcasts the player who was hit
+
+        if shooter_team == target_team:                   # Checks whether the players are teammates
+            equipment_to_broadcast.append(transmitter_id) # Also broadcasts the player who fired
+            self.add_play_action_message(
+                f"FRIENDLY FIRE: {shooter['codename']} hit teammate {target['codename']}"
+            )                                            # Reports friendly fire without changing scores
+        else:                                            # Runs when the target is on the opposing team
+            self.add_play_action_message(
+                f"{shooter['codename']} hit {target['codename']}"
+            )                                            # Reports a normal hit without changing scores
+
+        for equipment_id in equipment_to_broadcast:      # Sends one UDP message for each equipment ID
+            try:
+                broadcast_equipment_code(
+                    equipment_id,                        # Sends a single equipment ID
+                    broadcast_ip=self.broadcast_ip,      # Uses the operator's selected network address
+                    port=BROADCAST_PORT                   # Broadcasts through UDP port 7500
+                )
+            except OSError as error:                      # Reports an unsuccessful UDP broadcast
+                self.add_play_action_message(
+                    f"Broadcast failed for equipment {equipment_id}: {error}"
+                )
 
     def close_app(self):                                 # Runs when the window is closed
         self.stop_music()
@@ -1032,6 +1090,7 @@ class LaserTagApp:                                       # Controls the laser ta
 
 
     def game_finished(self):                              # Handles the end of the six minute game
+        self.screen = "finished"                          # Stops processing hits after the game ends
         if hasattr(self, "game_timer_label"):              # Checks whether the timer label exists
             self.game_timer_label.config(
                 text="GAME TIME: 0:00"                    # Displays zero when gameplay ends
