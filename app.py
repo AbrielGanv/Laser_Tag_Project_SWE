@@ -21,6 +21,10 @@ except ImportError:
     pass                              # Falls back to normal environment variables
 
 MUSIC_FOLDER = Path(__file__).parent / "photon_tracks"
+BASE_ICON_PATH = Path(__file__).parent / "baseicon.jpg"  # Base icon from the instructor's github
+RED_BASE_CODE = 53                                       # Received when the red base is scored
+GREEN_BASE_CODE = 43                                     # Received when the green base is scored
+BASE_POINTS = 100                                        # Points awarded for scoring the opposing base
 
 class LaserTagApp:                                       # Controls the laser tag application
 
@@ -673,6 +677,10 @@ class LaserTagApp:                                       # Controls the laser ta
         transmitter_id = int(parts[0].strip())            # Gets the shooter's equipment ID
         hit_id = int(parts[1].strip())                    # Gets the equipment ID of the player hit
 
+        if hit_id in (RED_BASE_CODE, GREEN_BASE_CODE):    # Checks whether a base was hit
+            self.handle_base_hit(transmitter_id, hit_id)  # Awards the base to the player
+            return                                       # Base hits are not player tags
+
         if transmitter_id == hit_id:                      # Checks whether someone tagged themselves
             return                                       # Ignores self-hits
 
@@ -717,6 +725,31 @@ class LaserTagApp:                                       # Controls the laser ta
                 self.add_play_action_message(
                     f"Broadcast failed for equipment {equipment_id}: {error}"
                 )
+
+    def handle_base_hit(self, transmitter_id, base_code):  # Handles a player scoring a base
+        if base_code == RED_BASE_CODE:                    # Red base can only be scored by green
+            scoring_team, scoring_players = "green", self.green_players
+            base_name = "RED"                             # Name of the base that was hit
+        else:                                            # Green base can only be scored by red
+            scoring_team, scoring_players = "red", self.red_players
+            base_name = "GREEN"                           # Name of the base that was hit
+
+        shooter = next(
+            (player for player in scoring_players         # Looks for the shooter on the scoring team
+             if player["equipment_id"] == transmitter_id),
+            None                                         # Stays None when the shooter is not found
+        )
+
+        if shooter is None:                              # Shooter is unknown or hit their own base
+            print(f"Ignored {base_name} base hit from equipment {transmitter_id}")
+            return                                       # No points for your own base
+
+        shooter["score"] = shooter.get("score", 0) + BASE_POINTS  # Awards 100 points
+        shooter["has_base"] = True                       # Icon stays with the player for the rest of the game
+        self.add_play_action_message(
+            f"{shooter['codename']} scored the {base_name} base! +{BASE_POINTS}"
+        )                                                # Reports the base hit
+        self.update_play_action_display()                # Shows the new score and the base icon
 
     def close_app(self):                                 # Runs when the window is closed
         self.stop_music()
@@ -891,14 +924,12 @@ class LaserTagApp:                                       # Controls the laser ta
 
         red_heading.pack(pady=5)                          # Displays the red team heading
 
-        self.red_play_listbox = tk.Listbox(
-            red_frame,                                    # Places the player list in the red frame
-            height=8,                                     # Sets the visible player list height
-            font=("Arial", 14),                           # Sets the player list font
-            bg="#fff0f0"                                  # Sets the red player list background
+        self.red_play_frame = tk.Frame(
+            red_frame,                                  # Holds one row per red player
+            bg="#fff0f0"                                     # Sets the red player list background
         )
 
-        self.red_play_listbox.pack(
+        self.red_play_frame.pack(
             fill="both",                                  # Stretches the player list
             expand=True                                   # Uses available red team space
         )
@@ -937,14 +968,12 @@ class LaserTagApp:                                       # Controls the laser ta
 
         green_heading.pack(pady=5)                        # Displays the green team heading
 
-        self.green_play_listbox = tk.Listbox(
-            green_frame,                                  # Places the player list in the green frame
-            height=8,                                     # Sets the visible player list height
-            font=("Arial", 14),                           # Sets the player list font
-            bg="#effff1"                                  # Sets the green player list background
+        self.green_play_frame = tk.Frame(
+            green_frame,                                  # Holds one row per green player
+            bg="#effff1"                                     # Sets the green player list background
         )
 
-        self.green_play_listbox.pack(
+        self.green_play_frame.pack(
             fill="both",                                  # Stretches the player list
             expand=True                                   # Uses available green team space
         )
@@ -958,6 +987,13 @@ class LaserTagApp:                                       # Controls the laser ta
         )
 
         self.green_team_score_label.pack(pady=(10, 0))    # Displays the green team score
+
+        base_icon = Image.open(BASE_ICON_PATH)            # Loads the base icon (50x28)
+        self.base_icon = ImageTk.PhotoImage(base_icon)    # Keeps a reference so Tkinter does not lose it
+        self.blank_icon = tk.PhotoImage(width=50, height=28)  # Blank spacer so names line up without the icon
+
+        for player in self.red_players + self.green_players:
+            player["has_base"] = False                    # Nobody has scored a base at game start
 
         for player in self.red_players:                   # Goes through every entered red player
             if "score" not in player:                     # Checks whether the player has a score
@@ -1007,32 +1043,30 @@ class LaserTagApp:                                       # Controls the laser ta
 
 
     def update_play_action_display(self):                 # Updates the play action scores
-        self.red_play_listbox.delete(0, tk.END)           # Clears the current red team display
-        self.green_play_listbox.delete(0, tk.END)         # Clears the current green team display
+        for players, frame, bg in (
+            (self.red_players, self.red_play_frame, "#fff0f0"),
+            (self.green_players, self.green_play_frame, "#effff1")
+        ):
+            for row in frame.winfo_children():            # Clears the current team display
+                row.destroy()
 
-        for player in self.red_players:                   # Goes through every red team player
-            score = player.get("score", 0)                # Gets the player's current score
-            player_text = (
-                f"{player['codename']} | "                # Displays the player's codename
-                f"Score: {score}"                         # Displays the player's score
-            )
+            for player in players:                        # Goes through every player on the team
+                row = tk.Frame(frame, bg=bg)              # One row per player
+                row.pack(fill="x", padx=5, pady=2)        # Stacks the rows top to bottom
 
-            self.red_play_listbox.insert(
-                tk.END,                                   # Adds the player to the end of the list
-                player_text                               # Displays the red player's information
-            )
+                tk.Label(
+                    row,                                  # Base icon sits left of the codename
+                    image=self.base_icon if player.get("has_base") else self.blank_icon,
+                    bg=bg
+                ).pack(side="left")
 
-        for player in self.green_players:                 # Goes through every green team player
-            score = player.get("score", 0)                # Gets the player's current score
-            player_text = (
-                f"{player['codename']} | "                # Displays the player's codename
-                f"Score: {score}"                         # Displays the player's score
-            )
-
-            self.green_play_listbox.insert(
-                tk.END,                                   # Adds the player to the end of the list
-                player_text                               # Displays the green player's information
-            )
+                tk.Label(
+                    row,
+                    text=f"{player['codename']} | Score: {player.get('score', 0)}",
+                    font=("Arial", 14),                   # Matches the old player list font
+                    bg=bg,
+                    anchor="w"
+                ).pack(side="left", padx=(5, 0))
 
         red_team_score = sum(
             player.get("score", 0)                        # Gets each red player's current score
