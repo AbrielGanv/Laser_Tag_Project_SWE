@@ -25,6 +25,9 @@ BASE_ICON_PATH = Path(__file__).parent / "baseicon.jpg"  # Base icon from the in
 RED_BASE_CODE = 53                                       # Received when the red base is scored
 GREEN_BASE_CODE = 43                                     # Received when the green base is scored
 BASE_POINTS = 100                                        # Points awarded for scoring the opposing base
+TAG_POINTS = 10                                          # Points for tagging an opponent, lost for friendly fire
+GAME_START_CODE = 202                                    # Broadcast when the 30 second countdown finishes
+GAME_END_CODE = 221                                      # Broadcast three times when the game ends
 
 class LaserTagApp:                                       # Controls the laser tag application
 
@@ -40,6 +43,8 @@ class LaserTagApp:                                       # Controls the laser ta
         self.countdown = None                            # Active pre-game countdown, if any
         self.game_timer_job = None                       # Stores the scheduled game timer update
         self.music_playing = False                      # True while game music is playing
+        self.flash_job = None                            # Stores the scheduled team score flash
+        self.flash_on = False                            # Tracks whether the flash color is showing
         self.screen = "splash"
         self.db = PlayerDatabase()                       # Connects to the photon database when first used
         self.root.protocol("WM_DELETE_WINDOW",           # Closes the database when the application closes
@@ -669,7 +674,8 @@ class LaserTagApp:                                       # Controls the laser ta
         if isinstance(msg, bytes):                        # Checks whether the message is bytes
             msg = msg.decode("utf-8", errors="replace")   # Converts the message into text
 
-        parts = str(msg).strip().split(":")               # Separates the two equipment IDs
+        msg = str(msg).replace("\x00", "").strip()        # Removes the null character the traffic generator adds
+        parts = msg.split(":")                            # Separates the two equipment IDs
         if len(parts) != 2 or not all(part.strip().isascii() and part.strip().isdigit() for part in parts):
             print(f"Invalid hit message {msg!r} from {addr}")  # Ignores messages in the wrong format
             return                                       # Stops the function
@@ -679,6 +685,7 @@ class LaserTagApp:                                       # Controls the laser ta
 
         if hit_id in (RED_BASE_CODE, GREEN_BASE_CODE):    # Checks whether a base was hit
             self.handle_base_hit(transmitter_id, hit_id)  # Awards the base to the player
+            self.broadcast_code(hit_id)                   # Replies with the base code that was hit
             return                                       # Base hits are not player tags
 
         if transmitter_id == hit_id:                      # Checks whether someone tagged themselves
@@ -706,25 +713,31 @@ class LaserTagApp:                                       # Controls the laser ta
 
         if shooter_team == target_team:                   # Checks whether the players are teammates
             equipment_to_broadcast.append(transmitter_id) # Also broadcasts the player who fired
+            shooter["score"] -= TAG_POINTS  # Shooter loses 10 points for friendly fire
+            target["score"] -= TAG_POINTS  # Tagged teammate also loses 10 points
             self.add_play_action_message(
-                f"FRIENDLY FIRE: {shooter['codename']} hit teammate {target['codename']}"
-            )                                            # Reports friendly fire without changing scores
-        else:                                            # Runs when the target is on the opposing team
+                f"FRIENDLY FIRE: {shooter['codename']} hit teammate {target['codename']} (-{TAG_POINTS} each)"
+            )  # Reports friendly fire
+        else:  # Runs when the target is on the opposing team
+            shooter["score"] += TAG_POINTS  # Shooter earns 10 points
             self.add_play_action_message(
-                f"{shooter['codename']} hit {target['codename']}"
-            )                                            # Reports a normal hit without changing scores
+                f"{shooter['codename']} hit {target['codename']} (+{TAG_POINTS})"
+            )  # Reports a normal hit
 
-        for equipment_id in equipment_to_broadcast:      # Sends one UDP message for each equipment ID
-            try:
-                broadcast_equipment_code(
-                    equipment_id,                        # Sends a single equipment ID
-                    broadcast_ip=self.broadcast_ip,      # Uses the operator's selected network address
-                    port=BROADCAST_PORT                   # Broadcasts through UDP port 7500
-                )
-            except OSError as error:                      # Reports an unsuccessful UDP broadcast
-                self.add_play_action_message(
-                    f"Broadcast failed for equipment {equipment_id}: {error}"
-                )
+        self.update_play_action_display()  # Shows the new scores right away
+
+        for equipment_id in equipment_to_broadcast:  # Sends one UDP message for each equipment ID
+            self.broadcast_code(equipment_id)  # Broadcasts through UDP port 7500
+
+    def broadcast_code(self, code):  # Broadcasts one code or equipment ID over UDP
+        try:
+            broadcast_equipment_code(
+                code,  # Sends a single integer
+                broadcast_ip=self.broadcast_ip,  # Uses the operator's selected network address
+                port=BROADCAST_PORT  # Broadcasts through UDP port 7500
+            )
+        except OSError as error:  # Reports an unsuccessful UDP broadcast
+            self.add_play_action_message(f"Broadcast failed for {code}: {error}")
 
     def handle_base_hit(self, transmitter_id, base_code):  # Handles a player scoring a base
         if base_code == RED_BASE_CODE:                    # Red base can only be scored by green
@@ -752,6 +765,7 @@ class LaserTagApp:                                       # Controls the laser ta
         self.update_play_action_display()                # Shows the new score and the base icon
 
     def close_app(self):                                 # Runs when the window is closed
+        self.stop_flashing()                             # Stops the team score flash
         self.stop_music()
         self.receiver.stop()
         self.db.close()                                  # Closes the database connection
@@ -995,13 +1009,8 @@ class LaserTagApp:                                       # Controls the laser ta
         for player in self.red_players + self.green_players:
             player["has_base"] = False                    # Nobody has scored a base at game start
 
-        for player in self.red_players:                   # Goes through every entered red player
-            if "score" not in player:                     # Checks whether the player has a score
-                player["score"] = 0                       # Gives the player a starting score of zero
-
-        for player in self.green_players:                 # Goes through every entered green player
-            if "score" not in player:                     # Checks whether the player has a score
-                player["score"] = 0                       # Gives the player a starting score of zero
+        for player in self.red_players + self.green_players:  # Goes through every entered player
+            player["score"] = 0  # Every game starts at zero
 
         action_frame = tk.Frame(
             self.root,                                    # Places the play action area in the main window
@@ -1040,6 +1049,7 @@ class LaserTagApp:                                       # Controls the laser ta
         )
 
         self.update_play_action_display()                 # Displays the starting players and scores
+        self.flash_high_score()                           # Starts flashing the leading team's score
 
 
     def update_play_action_display(self):                 # Updates the play action scores
@@ -1050,7 +1060,13 @@ class LaserTagApp:                                       # Controls the laser ta
             for row in frame.winfo_children():            # Clears the current team display
                 row.destroy()
 
-            for player in players:                        # Goes through every player on the team
+            ranked_players = sorted(
+                players,  # Goes through every player on the team
+                key=lambda player: player.get("score", 0),  # Sorts by individual score
+                reverse=True  # Highest score first
+            )
+
+            for player in ranked_players:  # Displays players from highest to lowest score
                 row = tk.Frame(frame, bg=bg)              # One row per player
                 row.pack(fill="x", padx=5, pady=2)        # Stacks the rows top to bottom
 
@@ -1086,6 +1102,34 @@ class LaserTagApp:                                       # Controls the laser ta
             text=f"TEAM SCORE: {green_team_score}"        # Displays the total green team score
         )
 
+    def flash_high_score(self):                           # Flashes the leading team's score twice a second
+        red_score = sum(player.get("score", 0) for player in self.red_players)
+        green_score = sum(player.get("score", 0) for player in self.green_players)
+        self.flash_on = not self.flash_on                 # Switches between the two colors
+
+        for label, team_score, other_score in (
+            (self.red_team_score_label, red_score, green_score),
+            (self.green_team_score_label, green_score, red_score)
+        ):
+            if team_score > other_score and self.flash_on:  # Only the leading team flashes
+                label.config(fg="#ffd966")                # Shows the flash color
+            else:
+                label.config(fg="white")                  # Shows the normal color
+
+        self.flash_job = self.root.after(500, self.flash_high_score)  # Flashes again in half a second
+
+    def stop_flashing(self):                              # Stops the team score flash
+        if self.flash_job is not None:                    # Checks whether a flash is scheduled
+            self.root.after_cancel(self.flash_job)        # Cancels the next flash
+            self.flash_job = None
+
+    def return_to_player_entry(self):                     # Goes back to player entry after the game
+        self.stop_flashing()                              # Stops the team score flash
+        self.stop_music()                                 # Makes sure the music is off
+        for player in self.red_players + self.green_players:
+            player["score"] = 0                           # Clears scores for the next game
+            player["has_base"] = False                    # Clears base icons for the next game
+        self.show_player_entry()                          # Reopens player entry with the same players
 
     def add_play_action_message(self, message):            # Adds a message to the play action display
         if hasattr(self, "play_action_listbox"):           # Checks whether the message area exists
@@ -1130,12 +1174,27 @@ class LaserTagApp:                                       # Controls the laser ta
                 text="GAME TIME: 0:00"                    # Displays zero when gameplay ends
             )
 
-        self.add_play_action_message("GAME OVER")         # Displays the game over message
+        for _ in range(3):  # Broadcasts the end code three times
+            self.broadcast_code(GAME_END_CODE)
+
+        self.stop_music()  # Stops the music when the game ends
+        self.stop_flashing()  # Stops the flash at the end of the game
+        self.add_play_action_message("GAME OVER")  # Displays the game over message
+
+        return_button = tk.Button(
+            self.root,  # Places the button in the main window
+            text="Return to Player Entry",  # Sets the button text
+            font=("Arial", 12, "bold"),  # Sets the button font
+            command=self.return_to_player_entry  # Goes back to player entry when clicked
+        )
+
+        return_button.pack(pady=(0, 15))  # Displays the button below the play action area
     
     def countdown_finished(self):                         # Runs when the 30 second countdown ends
         self.root.unbind("<Escape>")                       # Disables the countdown cancel key
         self.countdown = None                              # Clears the completed countdown
         self.show_play_action()                            # Opens the play action display
+        self.broadcast_code(GAME_START_CODE)               # Tells the players' equipment the game started
         self.start_game_timer()                            # Starts the six minute gameplay timer
 
     def restore_team_lists(self):
