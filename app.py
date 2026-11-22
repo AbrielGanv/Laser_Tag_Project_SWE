@@ -43,6 +43,7 @@ class LaserTagApp:                                       # Controls the laser ta
         self.countdown = None                            # Active pre-game countdown, if any
         self.game_timer_job = None                       # Stores the scheduled game timer update
         self.music_playing = False                      # True while game music is playing
+        self.music_start_job = None
         self.flash_job = None                            # Stores the scheduled team score flash
         self.flash_on = False                            # Tracks whether the flash color is showing
         self.screen = "splash"
@@ -820,10 +821,12 @@ class LaserTagApp:                                       # Controls the laser ta
         if self.countdown is not None and self.countdown.running:  # Ignores F5 while already counting down
             return                                       # Stops the function
 
-        if not self.start_music():                       # Starts music at the same time as the countdown
-            return                                       # Stops if the music could not be started
+        
 
         self.root.bind("<Escape>", self.cancel_countdown)  # Esc aborts the countdown
+
+        self.music_start_job = self.root.after(14000, self.start_music)  # Starts music near 16 seconds remaining
+
         self.countdown = CountdownTimer(
             self.root,                                   # Covers the whole main window
             on_complete=self.countdown_finished,         # Runs when the timer hits 0
@@ -840,6 +843,11 @@ class LaserTagApp:                                       # Controls the laser ta
 
     def countdown_cancelled(self):                       # Returns to player entry after Esc
         self.root.unbind("<Escape>")
+
+        if self.music_start_job is not None:              # Checks whether music is waiting to start
+            self.root.after_cancel(self.music_start_job)  # Cancels the delayed music start
+            self.music_start_job = None                   # Clears the scheduled music job
+
         self.stop_music()
         self.countdown = None
         self.set_status("Game start cancelled", "#ffd966")
